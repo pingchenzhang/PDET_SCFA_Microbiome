@@ -30,7 +30,7 @@ feature_table_pre_process = function(feature_table, meta_data, sample_var, group
     e = rep(0, length(f))
     e[!is.na(group)] = residuals(f_fit)
     y = t(t(z) - e)
-    
+     
     outlier_check = function(x){
       # Fitting the mixture model using the algorithm of Peddada, S. Das, and JT Gene Hwang (2002)
       mu1 = quantile(x, 0.25, na.rm = T)
