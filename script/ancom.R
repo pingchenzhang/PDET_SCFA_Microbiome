@@ -1,3 +1,4 @@
+#' frome https://github.com/FrederickHuangLin/ANCOM-Code-Archive/tree/master
 library(nlme)
 library(dplyr)
 library(ggplot2)
@@ -126,8 +127,8 @@ feature_table_pre_process = function(feature_table, meta_data, sample_var, group
   return(res)
 }
 
-# ANCOM main function
-ANCOM = function(feature_table, meta_data, struc_zero = NULL, main_var, p_adj_method = "BH", 
+# ANCOM main function ----
+ANCOM <- function(feature_table, meta_data, struc_zero = NULL, main_var, p_adj_method = "BH", 
                  alpha = 0.05, adj_formula = NULL, rand_formula = NULL, lme_control = NULL,
                  legend_name='',...){
   # OTU table transformation: 
@@ -365,14 +366,9 @@ ANCOM = function(feature_table, meta_data, struc_zero = NULL, main_var, p_adj_me
 
 
 
-#'自己整理的函数
+#'
 #' 
 run_ancom <- function(df, sgc, opre=NULL, legend_name=''){
-  #' 使用的函数参考自 https://github.com/FrederickHuangLin/ANCOM-Code-Archive/tree/master
-  #' 
-  if(F){
-    df=eg.phylum*30000; sgc=eg.sgc
-  }
   ##
   meta_data <- data.frame(Sample.ID=names(sgc$sg), Group=sgc$sg, stringsAsFactors = F)
   # Step 1: Data preprocessing
@@ -382,6 +378,7 @@ run_ancom <- function(df, sgc, opre=NULL, legend_name=''){
     feature_table, meta_data, sample_var = "Sample.ID", group_var, 
     out_cut, zero_cut, lib_cut, neg_lb)
   # Step 2: ANCOM
+  #' https://github.com/FrederickHuangLin/ANCOM-Code-Archive/tree/master
   res = ANCOM(feature_table = prepro$feature_table,
               meta_data     = prepro$meta_data,
               struc_zero    = prepro$structure_zeros,

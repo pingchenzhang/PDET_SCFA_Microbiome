@@ -1,6 +1,6 @@
-#' anosim 相似性分析
-#' 输入矩阵和分组
+#' anosim 
 #' ?vegan::anosim
+#' 
 v_anosim <- function(
   dist, sgc, permutations=999, violin = F,
   notch=F,
@@ -8,20 +8,15 @@ v_anosim <- function(
   las = 1, Between_col = 'gray',
   ptype=c('box','violin','violin2')[1],
   base_size = 17,
-  opre = NULL, pw = 6, ph = 7){
-  if(F){
-    dist=eg.dist;sgc=eg.sgc;permutations=999
-    violin = F;notch=T;laby='Rank Dissimilarity';title='ANOSIM';
-    las=2;mar=c(6,4,4,2)
-    Between_col = 'gray'
-  }
-  gpn   <- unique(sgc$sg) # 分组名
+  opre = NULL, pw = 6, ph = 7
+){
+  gpn   <- unique(sgc$sg) # groupname
   resa <- vegan::anosim(as.dist(dist), sgc$sg[colnames(dist)],
-                        permutations = permutations) # 整体分析
+                        permutations = permutations) # 
   resdf <- tibble::tibble(Group=paste(gpn,collapse = ' vs '),
                           permutations=resa$permutations,
                  R=resa$statistic,p.value=resa$signif)
-  if(length(gpn)>2){ # 两两之间比较
+  if(length(gpn)>2){ # 
     comgp <- combn(gpn,2)
     resdf <- rbind(
       resdf,
@@ -81,7 +76,7 @@ v_anosim <- function(
              las = las, ylab=laby, xlab='', main = title)
       }
     ))
-  }else{ # 输出结果
+  }else{ # 
     if(ptype == 'box'){
       pp <- fp(pb) 
     }else if(ptype =='violin'){
@@ -95,4 +90,6 @@ v_anosim <- function(
     writexl::write_xlsx(resdata,path = paste0(opre,'.xlsx'))
     cat(opre,'\n')
   }
-}; # v_anosim(dist=eg.dist,sgc=eg.sgc,permutations=999)
+}
+
+

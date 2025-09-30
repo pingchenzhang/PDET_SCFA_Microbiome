@@ -1,4 +1,4 @@
-#' Alpha多样性计算
+#' Alpha div
 #' vegan/ picante
 alpha_div <- function(dat, tree = NULL, base = exp(1),
                         include.root = F, gini_simpson=F) {
@@ -13,7 +13,7 @@ alpha_div <- function(dat, tree = NULL, base = exp(1),
   Observed <- est[1, ]
   Shannon  <- vegan::diversity(x, index = 'shannon', base = base)
   if(gini_simpson){
-    Simpson  <- vegan::diversity(x, index = 'simpson')    # Gini-Simpson 指数
+    Simpson  <- vegan::diversity(x, index = 'simpson')    # Gini-Simpson 
   }else{
     Simpson  <- 1 - vegan::diversity(x, index = 'simpson') # 
   }

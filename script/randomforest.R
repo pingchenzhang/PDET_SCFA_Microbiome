@@ -1,5 +1,5 @@
 #'
-#' 随机森林分析
+#' randomforest
 #' 
 randomforest <- function(
   dat, sgc, ntree=999, seed=NULL,
@@ -13,13 +13,13 @@ randomforest <- function(
     tidyr::gather(SampleID, val, -.id) %>%
     tidyr::spread(.id, val) %>%
     dplyr::mutate(Group = as.factor(sgc$sg[SampleID]),.after=1) -> dat2
-  ## 随机森林分析
+  ## 
   if(!is.null(seed)) set.seed(seed)
   randomForest::randomForest(
     Group~., data = dplyr::select(dat2, -SampleID),
     ntree=ntree, importance=T, ...) -> rf.res
 
-  ## 输出结果
+  ## result
   if(!is.null(opre)){
     dir.create(dirname(opre), showWarnings = F, recursive = T)
     list(
@@ -28,10 +28,11 @@ randomforest <- function(
       Data = dat2
     ) -> odat
     writexl::write_xlsx(odat, paste0(opre,'Data.xlsx'))
-    capture.output(print(rf.res), file = paste0(opre,'模型结果.txt'))
+    capture.output(print(rf.res), file = paste0(opre,'Result.txt'))
     n.var <- min(nrow(odat$Importance), n.var)
     if(n.var>1){
       cairo_pdf(paste0(opre,'Importance.pdf'), width = pw, height = ph)
+      # mean decrease accuracy (MDA) and mean decrease Gini (MDG)
       randomForest::varImpPlot(rf.res, n.var = n.var, main = main)
       dev.off()     
     }

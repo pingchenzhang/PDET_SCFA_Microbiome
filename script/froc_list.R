@@ -4,9 +4,9 @@
 froc_list <- function(
    df, Y, namelist, color=NULL,
    legacy.axes = T,
-   print.thres = T, # 显示 best 点
-   txttype = c('auc_ci','auc_ci_pval')[1], # 显示在图片上 哪些信息
-   title = NULL,    # 默认 "ROC curve (A & B)"
+   print.thres = T, #  best 
+   txttype = c('auc_ci','auc_ci_pval')[1], # 
+   title = NULL,    # "ROC curve (A & B)"
    line_size  = .7,
    line_alpha = 1,
    line_type   = 1,
@@ -17,23 +17,14 @@ froc_list <- function(
    show_legend = TRUE,
    opre=NULL, ph=7, pw=7 
 ){
-   if(F){ # test
-      df <- data.frame(t(eg.phylum[c(1,7),]),y=eg.sgc2$sg[colnames(eg.phylum)])
-      Y='y';col=c(1,2);legend_size = 2;base_family = ''
-      line_size  = .7; line_alpha = 1;line_type   = 1;legend_size = 2; quiet = TRUE;
-      pexpand = TRUE; show_legend = TRUE;print.thres=T;
-      name=NULL;legacy.axes=T;title='ROC';color=NULL
-      namelist<- list(a=c('Proteobacteria','Verrucomicrobia'),
-                      b5454='Verrucomicrobia')
-   }
    ### 
    if(is.null(color)) color <- ggsci::pal_igv()(50)[c(-4,-6)]
    color <- setNames(color[1:length(namelist)],names(namelist))
    
-   df <- tibble::rownames_to_column(dplyr::rename(df,all_of(c(.y=Y))),'name') %>% # Y的列名
+   df <- tibble::rownames_to_column(dplyr::rename(df,all_of(c(.y=Y))),'name') %>% # 
       dplyr::mutate(.y=as.factor(.y))
    purrr::map_dfr(names(namelist),function(type){ # type=names(namelist)[1]
-      xname <- namelist[[type]] # x名
+      xname <- namelist[[type]] # x
       if(length(xname)==1){
          dplyr::select(df,name,.y,value=dplyr::all_of(xname)) %>%
             dplyr::mutate(type=type)
@@ -48,9 +39,6 @@ froc_list <- function(
    lapply(names(namelist), function(x){
       datx <- dplyr::select(datl,.y, all_of(c('.y',x=x)))
       rocx <- pROC::roc(.y ~ x, ci=T, print.thres='best', data = datx, quiet= quiet)
-      if(rocx$auc<.5){ # AUC小于5的变量，调换分组的因子
-         datx$.y <- forcats::fct_rev(datx$.y)
-         rocx <- pROC::roc(.y ~ x, ci=T, data = datx, quiet= quiet) }
       rocx
    }) %>% setNames(names(namelist)) -> res.roc
    

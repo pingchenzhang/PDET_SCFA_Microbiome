@@ -12,11 +12,13 @@
 #' @param perm permutations
 #'
 #' @return Table with the pairwise factors, anosim R, p.value and adjusted p.value.
-anosim.pairwise <- function(x, grouping,
-                            sim.function = "vegdist",
-                            sim.method = "bray",
-                            p.adjust.m = "bonferroni",
-                            perm = 999){
+anosim.pairwise <- function(
+    x, grouping,
+    sim.function = "vegdist",
+    sim.method = "bray",
+    p.adjust.m = "bonferroni",
+    perm = 999  
+  ){
   co <- combn(unique(as.character(grouping)), 2) # pairwise grouping
   n <- ncol(co)
   pairs <- vector(mode = "numeric", length = n)
