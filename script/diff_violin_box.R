@@ -13,11 +13,11 @@ diff_violin_box <- function(
    var.equal = F, paired = F, exact = NULL, # 
    cutpoints = c(0, 0.001, 0.01, 0.05, 1),
    symbols   = c("***", "**", "*", ""), # 
-   ptype = c('bar','box','violin4')[1], # 
+   ptype = c('violin4', 'bar','box')[1], # 
    title=NULL, laby='Relative Abundance (mean±SE)', laby.box='Abundance', # label
    sig.type = c('p.signif','p.format','p.format.signif')[1],
    p_limit=0.05, coef = 1.5, errorbar.width = .5,
-   violin_trim = T, 
+   violin_trim = F, 
    bee.cex = 1, bee.alpha=1,
    priority = c("ascending","descending", "density", "random", "none")[3],
    tip_length = 0.01, tip_vjust=0.1, sig_vjust=0.01, # tip

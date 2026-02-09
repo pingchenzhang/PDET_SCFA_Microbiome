@@ -26,13 +26,13 @@ diff_alpha_box <- function(
     dplyr::mutate(.gp = sgc$sg[.ID],.gp = factor(.gp,levels = unique(sgc$sg))) # 
   pval <- ggpubr::compare_means(val ~ .gp,data = tidyr::gather(pdat,name,val,-.gp,-.ID) %>%
                                   dplyr::mutate(val=ifelse(is.na(val),0,val)),
-              group.by = 'name', paired=paired,exact = exact, method = testmethod) %>%
+              group.by = 'name', paired=paired, exact = exact, method = testmethod) %>%
     dplyr::select(-.y.) %>%
              dplyr::mutate(p.signif=ifelse(p.signif=='ns','',p.signif))
   purrr::map(names(cname),function(x){
     pval2 <- dplyr::filter(pval,name == x)
-    sutitle <- paste0('method =',testmethod,' p =',
-                      pval2$p.format,ifelse(pval2$p.signif!='ns',pval2$p.signif,''))
+    sutitle <- paste0('method = ',stringr::str_to_title( testmethod), ' P = ',
+                      round(pval2$p, 3), ifelse(pval2$p.signif!='ns',pval2$p.signif,''))
     ggplot(pdat[,c(x,'.gp')], aes_string(x='.gp', y=x, fill = '.gp'))+
       stat_boxplot(geom ='errorbar') +  geom_boxplot(show.legend = F)+
       scale_fill_manual(values=sgc$gc) +
@@ -43,20 +43,13 @@ diff_alpha_box <- function(
             axis.text.x=element_text(angle=45, hjust=1)) #
   }) %>% purrr::set_names(names(cname)) -> pall
   # 
-  if(length(unique(sgc$sg))>2){
-    reshoc <- purrr::map(names(cname),function(y){ # y='ACE'
-      post_hocfun(value = pdat[[y]], gp = pdat$.gp, method = testmethod)
-    }) %>% purrr::set_names(names(cname))
-  }else{reshoc <- NULL}
 
-  
   if(!is.null(opre)){
     ggsave(paste0(opre,'.pdf'),patchwork::wrap_plots(pall),device = cairo_pdf,
            width = pw,height = ph)
     writexl::write_xlsx(list(Pvalue=pval,Rawdata=pdat),paste0(opre,'.xlsx'))
-    if(!is.null(reshoc)){ sink(paste0(opre,'.txt'));print(reshoc); sink() }
     cat(paste0(opre,'.pdf xlsx\n'))
   }
   return(list(p=pall,pall=patchwork::wrap_plots(pall),
-              dat=list(Pvalue=pval,Rawdata=pdat),reshoc=reshoc))
+              dat=list(Pvalue=pval,Rawdata=pdat)))
 }

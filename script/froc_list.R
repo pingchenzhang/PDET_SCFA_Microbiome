@@ -89,14 +89,14 @@ froc_list <- function(
                       name=c(res.tab$name),label=c(res.tab$label))
    # color['.'] <- 'black'
    if(is.null(title)) 
-      title <- paste0('ROC curve (',paste0(unique(df$.y),collapse = ' & '),')')
+      title <- paste0('ROC curve (',paste0(unique(df$.y),collapse = ' vs. '),')')
    pROC::ggroc(res.roc, legacy.axes=legacy.axes, linetype = line_type,
                size = line_size, alpha = line_alpha) + 
       geom_abline(intercept = ifelse(legacy.axes,0,1), slope = 1,
                   color = "darkgrey", linetype = "solid") +
-      geom_text(aes(x=ifelse(legacy.axes,.95,.05), y=y+.05, label=label),
+      geom_text(aes(x=ifelse(legacy.axes,1,.05), y=y+.05, label=label),
                 data = res.tab2, hjust=1, show.legend = F) +
-      annotate('text',x=ifelse(legacy.axes,.95,.05), y=length(namelist)*.05+0.05,
+      annotate('text',x=ifelse(legacy.axes,.985,.05), y=length(namelist)*.05+0.05,
                label=laba, hjust=1,color='black',fontface = "bold") +
       labs(title = title) + theme_bw(base_family = base_family) +
       theme(text = element_text(family = base_family),

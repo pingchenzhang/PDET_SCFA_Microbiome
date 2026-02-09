@@ -1,0 +1,1349 @@
+
+
+# data and script
+
+```{r}
+pacman::p_load(tidyverse, patchwork, randomForest)
+
+# source
+r_scripts <- list.files('script', pattern = '\\.R$', full.names = TRUE)
+invisible(lapply(r_scripts, source))
+
+# pick genus  run randomForest
+rf_genus <- function(resi, genusi, main = 'RF Model') {
+  # resi=res_asv; genusi=asv_genus
+  resi$genus.abun[genusi, names(resi$sgc$sg)] %>%
+    t() %>%
+    as.data.frame() %>%
+    tibble::rownames_to_column('id') %>%
+    dplyr::mutate(group = fct_inorder(resi$sgc$sg[id]), .after = 1) -> dati
+
+  set.seed(123)
+  mrf <- randomForest::randomForest(
+    group ~ .,
+    data = dati[, -1],
+    ntree = 2000,
+    importance = T
+  )
+  #pdf(paste0(oprei, '.pdf'), width = pw, height = ph)
+  # randomForest::varImpPlot(mrf, type = NULL, main = main)
+  #dev.off()
+  gg_varImpPlot(mrf)
+}
+
+# read SCFA data table
+readRDS('data/scfa_table.rds') %>%
+  tibble::column_to_rownames(colnames(.)[1]) -> res_scfa
+colnames(res_scfa)
+```
+
+# Figure 1. PD vs HC
+
+Figure 1. Differential taxa and ROC analysis between PD and HC groups in the test set.
+
+```{r}
+# Taxa showing significance group comparison in ≥2 approaches (including ANCOM, ANCOM-BC, ALDEx2, MaAsLin 2 and LEfSe) retained for random forest analysis
+
+asv_genus <- c(
+  'Citrobacter',
+  'Collinsella',
+  'Eggerthella',
+  'Gordonibacter',
+  'Haemophilus',
+  'Pseudomonas',
+  'Stenotrophomonas',
+  'Kluyvera'
+)
+otu_genus <- c(
+  'Citrobacter',
+  'Collinsella',
+  'Eggerthella',
+  'Gordonibacter',
+  'Haemophilus',
+  'Pseudomonas',
+  'Stenotrophomonas',
+  'Catabacter',
+  'Faecalibacterium'
+)
+# 
+readRDS('data/asv/HCvsPD.res.Rdata') -> res_asv
+readRDS('data/otu/HCvsPD.res.Rdata') -> res_otu
+readRDS('data/scfa_table.rds') %>%
+  tibble::column_to_rownames(colnames(.)[1]) -> res_scfa
+colnames(res_scfa)
+# A venn 
+draw_venn_diagram(
+  a = setdiff(asv_genus, otu_genus),
+  b = setdiff(otu_genus, asv_genus),
+  ab = intersect(otu_genus, asv_genus),
+  a_name = 'DADA2',
+  b_name = 'OTU',
+  main = 'HC vs. PD',
+  fsize = 3,
+  fsize_main = 4
+) -> pa
+pa
+
+# B C randomForest Variable Importance
+rf_genus(res_asv, genusi = asv_genus) -> pb1
+rf_genus(res_otu, genusi = otu_genus) -> pb2
+t(res_scfa[names(res_asv$sgc$sg), ]) -> df_scfa
+
+# D SCFA violin beeswarm
+purrr::map(
+  rownames(df_scfa),
+  ~ {
+    diff_violin_beeswarm(
+      df_scfa,
+      sgc = res_asv$sgc,
+      name = .x,
+      test = 'wilcox',
+      laby.box = 'Content(μg/g)'
+    )$p +
+      labs(subtitle = NULL, x = NULL) +
+      theme(legend.position = 'none')
+  }
+) %>%
+  patchwork::wrap_plots(., patchwork::guide_area()) +
+  patchwork::plot_layout(nrow = 2, guides = 'collect') -> pd
+
+## rename data  add suff
+dplyr::left_join(
+  as.data.frame(t(res_asv$genus.abun[asv_genus, names(res_asv$sgc$sg)])) %>%
+    tibble::rownames_to_column('id') %>%
+    dplyr::rename_at(colnames(.)[-1], ~ paste0(.x, '-DADA2')),
+  as.data.frame(t(res_otu$genus.abun[otu_genus, names(res_otu$sgc$sg)])) %>%
+    tibble::rownames_to_column('id') %>%
+    dplyr::rename_at(colnames(.)[-1], ~ paste0(.x, '-OTU')),
+  by = 'id'
+) %>%
+  dplyr::left_join(tibble::rownames_to_column(res_scfa, 'id'), by = 'id') %>%
+  dplyr::mutate(group = fct_inorder(res_asv$sgc$sg[id]), .after = 1) %>%
+  tibble() -> df_roc
+
+
+# top3 names
+# Top 3 representative taxa identified from the results of random forest separately from the DADA2 and OTU methods by combining their rankings from both MDA and MDG scores, and then combined these representative taxa for ROC analysis
+name_acid = c('Isovaleric acid', 'Isobutyric acid')
+name_DADA2 = c('Haemophilus-DADA2', 'Citrobacter-DADA2', 'Eggerthella-DADA2')
+name_OTU = c('Eggerthella-OTU', 'Citrobacter-OTU', 'Haemophilus-OTU')
+
+# E.  ROC DADA2 OTU 
+froc_list(
+  df_roc,
+  Y = 'group',
+  print.thres = F,
+  namelist = list(
+    `DADA2` = name_DADA2,
+    `OTU` = name_OTU,
+    `DADA2+OTU` = c(name_OTU, name_DADA2)
+  )
+)$p -> proc
+
+# F. ROC DADA2 OTU +  SCFA
+froc_list(
+  df_roc,
+  Y = 'group',
+  print.thres = F, #  best
+  namelist = list(
+    `DADA2+SCFA` = c(name_DADA2, name_acid),
+    `OTU+SCFA` = c(name_OTU, name_acid),
+    `DADA2+OTU+SCFA` = c(name_OTU, name_DADA2, name_acid)
+  )
+)$p -> proc_acid
+
+require(patchwork)
+if (F) {
+  ((pa + labs(tag = 'A')) +
+    ((pb1$pmda + labs(tag = 'B')) + pb1$pgini) +
+    ((pb2$pmda + labs(tag = 'C')) + pb2$pgini)) /
+    (pd + labs(tag = 'D')) /
+    ((proc + theme(legend.position = 'none') + labs(tag = 'E')) +
+      (proc_acid + theme(legend.position = 'none') + labs(tag = 'F'))) -> p1all
+  ggsave('p1.pdf', p1all, device = cairo_pdf, width = 15, height = 18)
+
+  (wrap_plots(
+    (pa + labs(tag = 'A')),
+    ((pb1$pmda + labs(tag = 'B')) + pb1$pgini),
+    ((pb2$pmda + labs(tag = 'C')) + pb2$pgini),
+    (proc + theme(legend.position = 'none') + labs(tag = 'E')),
+    widths = c(1, 1.5, 1.5, 1)
+  ) +
+    plot_layout(nrow = 1)) /
+    (wrap_plots(
+      ((pd + labs(tag = 'D'))),
+      # (proc + theme(legend.position = 'none') + labs(tag = 'E')),
+      (proc_acid + theme(legend.position = 'none') + labs(tag = 'F')),
+      widths = c(4, 1)
+    ) +
+      plot_layout(nrow = 1)) -> p1all2
+  p1all2
+
+  ggsave('p1.2.pdf', p1all2, device = cairo_pdf, width = 15, height = 10)
+  ggsave('p1.2.svg', p1all2, device = cairo_pdf, width = 15, height = 10)
+}
+
+(wrap_plots(
+  (pa + labs(tag = 'A')),
+  ((pb1$pmda + labs(tag = 'B')) + pb1$pgini),
+  ((pb2$pmda + labs(tag = 'C')) + pb2$pgini),
+  widths = c(1, 1, 1)
+) +
+  plot_layout(nrow = 1)) /
+  (wrap_plots(
+    (pd + labs(tag = 'D')),
+    (proc + theme(legend.position = 'none') + labs(tag = 'E')),
+    (proc_acid + theme(legend.position = 'none') + labs(tag = 'F')),
+    widths = c(2.5, 1, 1)
+  ) +
+    plot_layout(nrow = 1)) -> pall3
+pall3
+ggsave('plot/p1.HCvsPD.pdf', pall3, device = cairo_pdf, width = 16, height = 8)
+# ggsave('p1.3.svg', p1all3, device = cairo_pdf, width = 15, height = 10)
+```
+
+
+# Figure 2. PD vs ET
+
+Figure 2. Differential taxa and ROC analysis between PD and ET groups in the test set. 
+
+```{r}
+# Taxa showing significance group comparison in ≥2 approaches (including ANCOM, ANCOM-BC, ALDEx2, MaAsLin 2 and LEfSe) retained for random forest analysis
+asv_genus <- c(
+  'Bacteroides',
+  'Barnesiella',
+  'Bilophila',
+  'Haemophilus',
+  'Romboutsia',
+  'Acetanaerobacterium',
+  'Gordonibacter'
+)
+otu_genus <- c(
+  'Bacteroides',
+  'Barnesiella',
+  'Bilophila',
+  'Haemophilus',
+  'Romboutsia',
+  'Citrobacter',
+  'Eggerthella'
+)
+
+readRDS('data/asv/ETvsPD.res.Rdata') -> res_asv
+readRDS('data/otu/ETvsPD.res.Rdata') -> res_otu
+readRDS('data/scfa_table.rds') %>%
+  tibble::column_to_rownames(colnames(.)[1]) -> res_scfa
+colnames(res_scfa)
+t(res_scfa[names(res_asv$sgc$sg), ]) -> df_scfa
+
+# A. venn 
+draw_venn_diagram(
+  a = setdiff(asv_genus, otu_genus),
+  b = setdiff(otu_genus, asv_genus),
+  ab = intersect(otu_genus, asv_genus),
+  a_name = 'DADA2',
+  b_name = 'OTU',
+  main = 'ET vs. PD',
+  fsize = 3,
+  fsize_main = 4
+) -> pa
+# pa
+# B. C. randomForest Variable Importance
+rf_genus(res_asv, genusi = asv_genus) -> pb1
+rf_genus(res_otu, genusi = otu_genus) -> pb2
+
+# D. SCFA violin beeswarm
+purrr::map(
+  rownames(df_scfa),
+  ~ {
+    diff_violin_beeswarm(
+      df_scfa,
+      sgc = res_asv$sgc,
+      name = .x,
+      test = 'wilcox',
+      laby.box = 'Content(μg/g)',
+      bee.cex = 3
+    )$p +
+      labs(subtitle = NULL, x = NULL) +
+      theme(legend.position = 'none')
+  }
+) %>%
+  patchwork::wrap_plots(., patchwork::guide_area()) +
+  patchwork::plot_layout(nrow = 2, guides = 'collect') -> pd
+
+## rename data  add suff
+dplyr::left_join(
+  as.data.frame(t(res_asv$genus.abun[asv_genus, names(res_asv$sgc$sg)])) %>%
+    tibble::rownames_to_column('id') %>%
+    dplyr::rename_at(colnames(.)[-1], ~ paste0(.x, '-DADA2')),
+  as.data.frame(t(res_otu$genus.abun[otu_genus, names(res_otu$sgc$sg)])) %>%
+    tibble::rownames_to_column('id') %>%
+    dplyr::rename_at(colnames(.)[-1], ~ paste0(.x, '-OTU')),
+  by = 'id'
+) %>%
+  dplyr::left_join(tibble::rownames_to_column(res_scfa, 'id'), by = 'id') %>%
+  dplyr::mutate(group = fct_inorder(res_asv$sgc$sg[id]), .after = 1) %>%
+  tibble() -> df_roc
+
+# top3 names
+# Top 3 representative taxa identified from the results of random forest separately from the DADA2 and OTU methods by combining their rankings from both MDA and MDG scores, and then combined these representative taxa for ROC analysis
+
+name_acid = c('Isovaleric acid', 'Isobutyric acid', 'Valeric acid')
+name_DADA2 = c('Bilophila-DADA2', 'Haemophilus-DADA2', 'Bacteroides-DADA2')
+name_OTU = c('Bilophila-OTU', 'Bacteroides-OTU', 'Haemophilus-OTU')
+# E. ROC DADA2 OTU 
+froc_list(
+  df_roc,
+  Y = 'group',
+  print.thres = F,
+  namelist = list(
+    `DADA2` = name_DADA2,
+    `OTU` = name_OTU,
+    `DADA2+OTU` = c(name_OTU, name_DADA2)
+  )
+)$p -> proc
+
+# F. ROC DADA2 OTU +  SCFA
+froc_list(
+  df_roc,
+  Y = 'group',
+  print.thres = F, #  best
+  namelist = list(
+    `DADA2+SCFA` = c(name_DADA2, name_acid),
+    `OTU+SCFA` = c(name_OTU, name_acid),
+    `DADA2+OTU+SCFA` = c(name_OTU, name_DADA2, name_acid)
+  )
+)$p -> proc_acid
+
+require(patchwork)
+(wrap_plots(
+  (pa + labs(tag = 'A')),
+  ((pb1$pmda + labs(tag = 'B')) + pb1$pgini),
+  ((pb2$pmda + labs(tag = 'C')) + pb2$pgini),
+  widths = c(1, 1, 1)
+) +
+  plot_layout(nrow = 1)) /
+  (wrap_plots(
+    ((pd + labs(tag = 'D'))),
+    (proc + theme(legend.position = 'none') + labs(tag = 'E')),
+    (proc_acid + theme(legend.position = 'none') + labs(tag = 'F')),
+    widths = c(3, 1, 1)
+  ) +
+    plot_layout(nrow = 1)) -> pall3
+pall3
+ggsave('plot/p2.ETvsPD.pdf', pall3, device = cairo_pdf, width = 16, height = 8)
+# ggsave('p1.3.svg', p1all3, device = cairo_pdf, width = 15, height = 10)
+```
+
+
+# Figure 3. TD-PD vs ET
+
+Figure 3.  Differential taxa and ROC analysis between TD-PD and ET groups in the test set. 
+
+```{r}
+# Taxa showing significance group comparison in ≥2 approaches (including ANCOM, ANCOM-BC, ALDEx2, MaAsLin 2 and LEfSe) retained for random forest analysis
+asv_genus <- c(
+  'Bilophila',
+  'Haemophilus',
+  'Lachnoclostridium',
+  'Romboutsia'
+)
+otu_genus <- c(
+  'Bilophila',
+  'Haemophilus',
+  'Lachnoclostridium',
+  'Romboutsia',
+  'Barnesiella',
+  'Eggerthella',
+  'Intestinibacter'
+)
+
+readRDS('data/asv/ETvsTD_PD.res.Rdata') -> res_asv
+readRDS('data/otu/ETvsTD_PD.res.Rdata') -> res_otu
+readRDS('data/scfa_table.rds') %>%
+  tibble::column_to_rownames(colnames(.)[1]) -> res_scfa
+colnames(res_scfa)
+t(res_scfa[names(res_asv$sgc$sg), ]) -> df_scfa
+
+# A. venn 
+draw_venn_diagram(
+  a = setdiff(asv_genus, otu_genus),
+  b = setdiff(otu_genus, asv_genus),
+  ab = intersect(otu_genus, asv_genus),
+  a_name = 'DADA2',
+  b_name = 'OTU',
+  main = 'ET vs. TD-PD',
+  fsize = 3,
+  fsize_main = 4
+) -> pa
+
+# B. C randomForest Variable Importance
+rf_genus(res_asv, genusi = asv_genus) -> pb1
+rf_genus(res_otu, genusi = otu_genus) -> pb2
+
+# D. SCFA violin beeswarm
+purrr::map(
+  rownames(df_scfa),
+  ~ {
+    diff_violin_beeswarm(
+      df_scfa,
+      sgc = res_asv$sgc,
+      name = .x,
+      test = 'wilcox',
+      laby.box = 'Content(μg/g)',
+      bee.cex = 3
+    )$p +
+      labs(subtitle = NULL, x = NULL) +
+      theme(legend.position = 'none')
+  }
+) %>%
+  patchwork::wrap_plots(., patchwork::guide_area()) +
+  patchwork::plot_layout(nrow = 2, guides = 'collect') -> pd
+
+## rename data  add suff
+dplyr::left_join(
+  as.data.frame(t(res_asv$genus.abun[asv_genus, names(res_asv$sgc$sg)])) %>%
+    tibble::rownames_to_column('id') %>%
+    dplyr::rename_at(colnames(.)[-1], ~ paste0(.x, '-DADA2')),
+  as.data.frame(t(res_otu$genus.abun[otu_genus, names(res_otu$sgc$sg)])) %>%
+    tibble::rownames_to_column('id') %>%
+    dplyr::rename_at(colnames(.)[-1], ~ paste0(.x, '-OTU')),
+  by = 'id'
+) %>%
+  dplyr::left_join(tibble::rownames_to_column(res_scfa, 'id'), by = 'id') %>%
+  dplyr::mutate(group = fct_inorder(res_asv$sgc$sg[id]), .after = 1) %>%
+  tibble() -> df_roc
+
+# top3 names
+# Top 3 representative taxa identified from the results of random forest separately from the DADA2 and OTU methods by combining their rankings from both MDA and MDG scores, and then combined these representative taxa for ROC analysis
+name_acid = c('Isovaleric acid', 'Isobutyric acid')
+name_DADA2 = c('Lachnoclostridium-DADA2', 'Haemophilus-DADA2', 'Bilophila-DADA2')
+name_OTU = c('Lachnoclostridium-OTU', 'Bilophila-OTU', 'Haemophilus-OTU')
+# E. ROC DADA2 OTU 
+froc_list(
+  df_roc,
+  Y = 'group',
+  print.thres = F,
+  namelist = list(
+    `DADA2` = name_DADA2,
+    `OTU` = name_OTU,
+    `DADA2+OTU` = c(name_OTU, name_DADA2)
+  )
+)$p -> proc
+
+# F. ROC DADA2 OTU +  SCFA
+froc_list(
+  df_roc,
+  Y = 'group',
+  print.thres = F, #  best
+  namelist = list(
+    `DADA2+SCFA` = c(name_DADA2, name_acid),
+    `OTU+SCFA` = c(name_OTU, name_acid),
+    `DADA2+OTU+SCFA` = c(name_OTU, name_DADA2, name_acid)
+  )
+)$p -> proc_acid
+
+require(patchwork)
+(wrap_plots(
+  (pa + labs(tag = 'A')),
+  ((pb1$pmda + labs(tag = 'B')) + pb1$pgini),
+  ((pb2$pmda + labs(tag = 'C')) + pb2$pgini),
+  widths = c(1, 1, 1)
+) +
+  plot_layout(nrow = 1)) /
+  (wrap_plots(
+    ((pd + labs(tag = 'D'))),
+    (proc + theme(legend.position = 'none') + labs(tag = 'E')),
+    (proc_acid + theme(legend.position = 'none') + labs(tag = 'F')),
+    widths = c(3, 1, 1)
+  ) +
+    plot_layout(nrow = 1)) -> pall3
+ggsave('plot/p3.ETvsTD-PD.pdf', pall3, device = cairo_pdf, width = 16, height = 8)
+# ggsave('p1.3.svg', p1all3, device = cairo_pdf, width = 15, height = 10)
+```
+
+# Figure 4. non-TD-PD vs TD-PD
+
+Figure 4. Differential taxa and ROC analysis between non-TD-PD and TD-PD groups. 
+
+```{r}
+# Taxa showing significance group comparison in ≥2 approaches (including ANCOM, ANCOM-BC, ALDEx2, MaAsLin 2 and LEfSe) retained for random forest analysis
+asv_genus1 <- c('Dialister↓')
+otu_genus1 <- c('Dialister↓')
+asv_genus <- stringr::str_sub(asv_genus1, end=-2)
+otu_genus <- stringr::str_sub(otu_genus1, end=-2)
+
+readRDS('data/asv/TD_PDvsnonTD_PD.res.Rdata') -> res_asv
+readRDS('data/otu/TD_PDvsnonTD_PD.res.Rdata') -> res_otu
+t(res_scfa[names(res_asv$sgc$sg), ]) -> df_scfa
+readRDS('data/asv/TD_PDvsnonTD_PD.yzset.res.Rdata') -> res_asvyz
+readRDS('data/otu/TD_PDvsnonTD_PD.yzset.res.Rdata') -> res_otuyz
+
+# A. venn 
+draw_venn_diagram(
+  a = setdiff(asv_genus1, otu_genus1),
+  b = setdiff(otu_genus1, asv_genus1),
+  ab = intersect(otu_genus1, asv_genus1),
+  a_name = 'DADA2',
+  b_name = 'OTU',
+  main = 'TD-PD vs. non-TD-PD',
+  fsize = 3,
+  fsize_main = 4
+) -> pa
+pa
+
+# D. SCFA violin beeswarm
+purrr::map(
+  rownames(df_scfa),
+  ~ {
+    diff_violin_beeswarm(
+      df_scfa,
+      sgc = res_asv$sgc,
+      name = .x,
+      test = 'wilcox',
+      laby.box = 'Content(μg/g)',
+      bee.cex = 3,
+      bee.alpha = .9,
+      priority = c("ascending", "descending", "density", "random", "none")[4]
+    )$p +
+      labs(subtitle = NULL, x = NULL) +
+      theme(legend.position = 'none')
+  }
+) %>%
+  patchwork::wrap_plots(patchwork::guide_area(), nrow = 1, guides = 'collect') -> pb
+
+## rename data  add suff
+dplyr::left_join(
+  as.data.frame(t(res_asv$genus.abun[asv_genus, names(res_asv$sgc$sg)])) %>%
+    tibble::rownames_to_column('id') %>%
+    dplyr::rename_at(colnames(.)[-1], ~ paste0(.x, '-DADA2')),
+  as.data.frame(t(res_otu$genus.abun[otu_genus, names(res_otu$sgc$sg)])) %>%
+    tibble::rownames_to_column('id') %>%
+    dplyr::rename_at(colnames(.)[-1], ~ paste0(.x, '-OTU')),
+  by = 'id'
+) %>%
+  dplyr::left_join(tibble::rownames_to_column(res_scfa, 'id'), by = 'id') %>%
+  dplyr::mutate(group = fct_inorder(res_asv$sgc$sg[id]), .after = 1) %>%
+  tibble() -> df_roc
+
+dplyr::left_join(
+  as.data.frame(t(res_asvyz$genus.abun[asv_genus, names(res_asvyz$sgc$sg)])) %>%
+    tibble::rownames_to_column('id') %>%
+    dplyr::rename_at(colnames(.)[-1], ~ paste0(.x, '-DADA2')),
+  as.data.frame(t(res_otuyz$genus.abun[otu_genus, names(res_otuyz$sgc$sg)])) %>%
+    tibble::rownames_to_column('id') %>%
+    dplyr::rename_at(colnames(.)[-1], ~ paste0(.x, '-OTU')),
+  by = 'id'
+) %>%
+  dplyr::left_join(tibble::rownames_to_column(res_scfa, 'id'), by = 'id') %>%
+  dplyr::mutate(group = fct_inorder(res_asvyz$sgc$sg[id]), .after = 1) %>%
+  tibble() -> df_rocyz
+
+# top names
+# representative taxa identified from the results of random forest separately from the DADA2 and OTU methods by combining their rankings from both MDA and MDG scores, and then combined these representative taxa for ROC analysis
+name_acid = c('Isovaleric acid', 'Isobutyric acid')
+name_DADA2 = c('Dialister-DADA2')
+name_OTU = c('Dialister-OTU')
+
+# E. ROC DADA2 OTU 
+froc_list(
+  df_roc,
+  Y = 'group',
+  print.thres = F,
+  namelist = list(
+    `DADA2` = name_DADA2,
+    `OTU` = name_OTU,
+    `DADA2+OTU` = c(name_OTU, name_DADA2)
+  )
+)$p -> proc
+
+# F. validation set ROC DADA2 OTU
+froc_list(
+  df_rocyz,
+  Y = 'group',
+  print.thres = F,
+  namelist = list(
+    `DADA2` = name_DADA2,
+    `OTU` = name_OTU,
+    `DADA2+OTU` = c(name_OTU, name_DADA2)
+  )
+)$p -> proc_yz
+
+require(patchwork)
+(wrap_plots(
+  (pa + labs(tag = 'A')),
+  (proc + theme(legend.position = 'none') + labs(tag = 'C')),
+  (proc_yz + theme(legend.position = 'none') + labs(tag = 'D')),
+  widths = c(1.3, 1, 1)
+) +
+  plot_layout(nrow = 1)) /
+  ((pb + labs(tag = 'B'))) +
+  plot_layout(heights = c(2, 1)) -> pall3
+pall3
+ggsave('plot/p4.TD-PDvsnon-TD-PD.pdf', pall3, device = cairo_pdf, width = 12, height = 7)
+```
+
+# Supplementary Figure 1. alpha and beta diversity
+
+Supplementary Figure 1. Alpha and beta diversity analyses among PD, ET, and HC Groups in the test set.
+
+```{r}
+readRDS('data/asv/HCvsETvsPD.res.Rdata') -> rasv
+readRDS('data/otu/HCvsETvsPD.res.Rdata') -> rotu
+cname = c(Chao1 = 'chao', ACE = 'ace', Shannon = 'shannon diversity', Simpson = 'simpson diversity')
+rasv$alpha
+# alpha
+# A. B. C. D. box
+diff_alpha_box(rasv$alpha, rasv$sgc, cname = cname, parameter = F) -> pa
+# G. H. I. J. box
+diff_alpha_box(rotu$alpha, rotu$sgc, cname = cname, parameter = F) -> po
+
+# anosim
+set.seed(123)
+# E.  unifarc anosim
+v_anosim(rasv$unifrac, sgc = rasv$sgc)$p -> pasv_unifrac
+# F. weight unifarc anosim
+v_anosim(rasv$wunifrac, sgc = rasv$sgc)$p -> pasv_wunifrac
+# K.  unifarc anosim
+v_anosim(rotu$unifrac, sgc = rotu$sgc)$p -> potu_unifrac
+# L. weight unifarc anosim
+v_anosim(rotu$wunifrac, sgc = rotu$sgc)$p -> potu_wunifrac
+
+pa$p$Chao1 +
+  pa$p$ACE +
+  pa$p$Shannon +
+  pa$p$Simpson +
+  pasv_unifrac +
+  pasv_wunifrac +
+  po$p$Chao1 +
+  po$p$ACE +
+  po$p$Shannon +
+  po$p$Simpson +
+  potu_unifrac +
+  potu_wunifrac +
+  plot_layout(nrow = 2) +
+  plot_annotation(tag_levels = 'A') -> psf1
+ggsave('plot/sf1.alpha.anosim.pdf', psf1, device = cairo_pdf(), width = 15, height = 7)
+
+""
+```
+
+# Supplementary Figure 2. ROC analysis between PD and HC groups in the validation set. 
+
+```{r}
+# Top 3 representative taxa identified from the results of random forest separately from the DADA2 and OTU methods by combining their rankings from both MDA and MDG scores, and then combined these representative taxa for ROC analysis
+readRDS('data/asv/HCvsPD.yzset.res.Rdata') -> asv_valid
+readRDS('data/otu/HCvsPD.yzset.res.Rdata') -> otu_valid
+c('Haemophilus','Citrobacter','Eggerthella') -> asv_genus
+c('Haemophilus','Citrobacter','Eggerthella') -> otu_genus
+name_acid = c('Isovaleric acid','Isobutyric acid')
+name_DADA2 = paste0(asv_genus, '-DADA2')
+name_OTU =  paste0(otu_genus, '-OTU')
+
+## rename data  add suff
+dplyr::left_join(
+  as.data.frame(t(asv_valid$genus.abun[asv_genus, names(asv_valid$sgc$sg)])) %>%
+    tibble::rownames_to_column('id') %>%
+    dplyr::rename_at(colnames(.)[-1], ~ paste0(.x, '-DADA2')),
+  as.data.frame(t(otu_valid$genus.abun[otu_genus, names(otu_valid$sgc$sg)])) %>%
+    tibble::rownames_to_column('id') %>%
+    dplyr::rename_at(colnames(.)[-1], ~ paste0(.x, '-OTU')),
+  by = 'id'
+) %>%
+  dplyr::left_join(tibble::rownames_to_column(res_scfa, 'id'), by = 'id') %>%
+  dplyr::mutate(group = fct_inorder(asv_valid$sgc$sg[id]), .after = 1) %>%
+  tibble() -> df_roc
+
+# A.  ROC DADA2 OTU 
+froc_list(
+  df_roc,
+  Y = 'group',
+  print.thres = F,
+  namelist = list(
+    `DADA2` = name_DADA2,
+    `OTU` = name_OTU,
+    `DADA2+OTU` = c(name_OTU, name_DADA2)
+  )
+)$p -> proc
+
+# B. ROC DADA2 OTU + SCFA
+froc_list(
+  df_roc,
+  Y = 'group',
+  print.thres = F, #  best
+  namelist = list(
+    `DADA2+SCFA` = c(name_DADA2, name_acid),
+    `OTU+SCFA` = c(name_OTU, name_acid),
+    `DADA2+OTU+SCFA` = c(name_OTU, name_DADA2, name_acid)
+  )
+)$p -> proc_acid
+(proc + labs(tag='A') + theme(legend.position = 'none')) +
+ ( proc_acid + labs(tag='B') + theme(legend.position = 'none')) -> psf2
+ggsave('plot/sf2.HCvsPD.pdf', psf2, device = cairo_pdf, width = 9, height = 4.6)
+```
+
+# Supplementary Figure 3. ROC analysis between PD and ET groups in the validation set.
+
+```{r}
+# Top 3 representative taxa identified from the results of random forest separately from the DADA2 and OTU methods by combining their rankings from both MDA and MDG scores, and then combined these representative taxa for ROC analysis
+readRDS('data/asv/ETvsPD.yzset.res.Rdata') -> asv_valid
+readRDS('data/otu/ETvsPD.yzset.res.Rdata') -> otu_valid
+c('Bilophila','Haemophilus','Bacteroides') -> asv_genus
+c('Bilophila','Haemophilus','Bacteroides') -> otu_genus
+name_acid = c('Isovaleric acid','Isobutyric acid','Valeric acid')
+name_DADA2 = paste0(asv_genus, '-DADA2')
+name_OTU =  paste0(otu_genus, '-OTU')
+
+## rename data  add suff
+dplyr::left_join(
+  as.data.frame(t(asv_valid$genus.abun[asv_genus, names(asv_valid$sgc$sg)])) %>%
+    tibble::rownames_to_column('id') %>%
+    dplyr::rename_at(colnames(.)[-1], ~ paste0(.x, '-DADA2')),
+  as.data.frame(t(otu_valid$genus.abun[otu_genus, names(otu_valid$sgc$sg)])) %>%
+    tibble::rownames_to_column('id') %>%
+    dplyr::rename_at(colnames(.)[-1], ~ paste0(.x, '-OTU')),
+  by = 'id'
+) %>%
+  dplyr::left_join(tibble::rownames_to_column(res_scfa, 'id'), by = 'id') %>%
+  dplyr::mutate(group = fct_inorder(asv_valid$sgc$sg[id]), .after = 1) %>%
+  tibble() -> df_roc
+
+
+
+# A. ROC DADA2 OTU 
+froc_list(
+  df_roc,
+  Y = 'group',
+  print.thres = F,
+  namelist = list(
+    `DADA2` = name_DADA2,
+    `OTU` = name_OTU,
+    `DADA2+OTU` = c(name_OTU, name_DADA2)
+  )
+)$p -> proc
+
+# B. ROC DADA2 OTU + SCFA
+froc_list(
+  df_roc,
+  Y = 'group',
+  print.thres = F, #  best
+  namelist = list(
+    `DADA2+SCFA` = c(name_DADA2, name_acid),
+    `OTU+SCFA` = c(name_OTU, name_acid),
+    `DADA2+OTU+SCFA` = c(name_OTU, name_DADA2, name_acid)
+  )
+)$p -> proc_acid
+(proc + labs(tag='A') + theme(legend.position = 'none')) +
+ ( proc_acid + labs(tag='B') + theme(legend.position = 'none')) -> psf3
+ggsave('plot/sf3.ETvsPD.pdf', psf3, device = cairo_pdf, width = 9, height = 4.6)
+```
+
+# Supplementary Figure 4. ROC analysis between TD-PD and ET groups in the validation set.
+```{r}
+# Top 3 representative taxa identified from the results of random forest separately from the DADA2 and OTU methods by combining their rankings from both MDA and MDG scores, and then combined these representative taxa for ROC analysis
+readRDS('data/asv/ETvsTD_PD.yzset.res.Rdata') -> asv_valid
+readRDS('data/otu/ETvsTD_PD.yzset.res.Rdata') -> otu_valid
+c('Lachnoclostridium','Haemophilus','Bilophila') -> asv_genus
+c('Lachnoclostridium','Haemophilus','Bilophila') -> otu_genus
+name_acid = c('Isovaleric acid','Isobutyric acid')
+name_DADA2 = paste0(asv_genus, '-DADA2')
+name_OTU =  paste0(otu_genus, '-OTU')
+
+## rename data  add suff
+dplyr::left_join(
+  as.data.frame(t(asv_valid$genus.abun[asv_genus, names(asv_valid$sgc$sg)])) %>%
+    tibble::rownames_to_column('id') %>%
+    dplyr::rename_at(colnames(.)[-1], ~ paste0(.x, '-DADA2')),
+  as.data.frame(t(otu_valid$genus.abun[otu_genus, names(otu_valid$sgc$sg)])) %>%
+    tibble::rownames_to_column('id') %>%
+    dplyr::rename_at(colnames(.)[-1], ~ paste0(.x, '-OTU')),
+  by = 'id'
+) %>%
+  dplyr::left_join(tibble::rownames_to_column(res_scfa, 'id'), by = 'id') %>%
+  dplyr::mutate(group = fct_inorder(asv_valid$sgc$sg[id]), .after = 1) %>%
+  tibble() -> df_roc
+
+
+# A. ROC DADA2 OTU 
+froc_list(
+  df_roc,
+  Y = 'group',
+  print.thres = F,
+  namelist = list(
+    `DADA2` = name_DADA2,
+    `OTU` = name_OTU,
+    `DADA2+OTU` = c(name_OTU, name_DADA2)
+  )
+)$p -> proc
+
+# B. ROC DADA2 OTU + SCFA
+froc_list(
+  df_roc,
+  Y = 'group',
+  print.thres = F, #  best
+  namelist = list(
+    `DADA2+SCFA` = c(name_DADA2, name_acid),
+    `OTU+SCFA` = c(name_OTU, name_acid),
+    `DADA2+OTU+SCFA` = c(name_OTU, name_DADA2, name_acid)
+  )
+)$p -> proc_acid
+(proc + labs(tag='A') + theme(legend.position = 'none')) +
+ ( proc_acid + labs(tag='B') + theme(legend.position = 'none')) -> psf4
+ggsave('plot/sf4.ETvsTD-PD.pdf', psf4, device = cairo_pdf, width = 9, height = 4.6)
+```
+
+# Supplementary Figure 5. Genus between PD and HC 
+
+Supplementary Figure 5. Violin plots of RF-selected top three differential genera across DADA2-denoising and OTU-clustering methodologies in test and validation sets between PD and HC groups. 
+
+```{r}
+asv_genus <- c('Haemophilus', 'Citrobacter', 'Eggerthella')
+otu_genus <- c('Eggerthella', 'Citrobacter', 'Haemophilus')
+# data
+readRDS('data/asv/HCvsPD.res.Rdata') -> asv_test
+readRDS('data/asv/HCvsPD.yzset.res.Rdata') -> asv_vali
+readRDS('data/otu/HCvsPD.res.Rdata') -> otu_test
+readRDS('data/otu/HCvsPD.yzset.res.Rdata') -> otu_vali
+
+pf2 <- function(dat_test, dat_vali, namei, tagi = '') {
+  # namei = asv_genus[1]; tagi = 'A'
+  diff_violin_box(dat_test$genus.abun, sgc = dat_test$sgc, name = namei, test = 'wilcox')$p +
+    labs(title = namei, subtitle = 'Test Set', tag = tagi) +
+    theme(plot.title = element_text(hjust = 2, face = 'bold.italic')) -> pt
+  diff_violin_box(dat_vali$genus.abun, sgc = dat_vali$sgc, name = namei, test = 'wilcox')$p +
+    theme(plot.title = element_text(hjust = -1, face = 'bold.italic')) +
+    labs(title = NULL, subtitle = 'Validation Set') -> pv
+  pt +
+    pv +
+    plot_layout(guides = 'collect') +
+    plot_annotation(subtitle = namei, theme = theme(plot.subtitle = element_text(hjust = .5, face = 'bold.italic')))
+}
+
+# test + validation 
+pA <- pf2(asv_test, asv_vali, asv_genus[1], 'A')
+pB <- pf2(otu_test, otu_vali, otu_genus[1], 'B')
+pC <- pf2(asv_test, asv_vali, asv_genus[2], 'C')
+pD <- pf2(otu_test, otu_vali, otu_genus[2], 'D')
+pE <- pf2(asv_test, asv_vali, asv_genus[3], 'E')
+pF <- pf2(otu_test, otu_vali, otu_genus[3], 'F')
+
+# 
+library(patchwork)
+(pA | pB) /
+  (pC | pD) /
+  (pE | pF) +
+  plot_annotation(
+    title = "DADA2                                  OTU",
+    theme = theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 14))
+  ) +
+  plot_layout(guides = 'collect') -> psf5
+ggsave('plot/sf5.PDvsHC.box.pdf', psf5, device = cairo_pdf(), width = 10, height = 10)
+```
+
+# Supplementary Figure 6. Genus between PD and ET 
+
+Supplementary Figure 6. Violin plots of RF-selected top three differential genera across DADA2-denoising and OTU-clustering methodologies in test and validation sets between PD and ET groups.
+
+```{r}
+asv_genus <- c('Bilophila', 'Haemophilus', 'Bacteroides')
+otu_genus <- c('Bilophila', 'Bacteroides', 'Haemophilus')
+# data
+readRDS('data/asv/ETvsPD.res.Rdata') -> asv_test
+readRDS('data/asv/ETvsPD.yzset.res.Rdata') -> asv_vali
+readRDS('data/otu/ETvsPD.res.Rdata') -> otu_test
+readRDS('data/otu/ETvsPD.yzset.res.Rdata') -> otu_vali
+
+pf2 <- function(dat_test, dat_vali, namei, tagi = '') {
+  # namei = asv_genus[1]; tagi = 'A'
+  diff_violin_box(dat_test$genus.abun, sgc = dat_test$sgc, name = namei, test = 'wilcox')$p +
+    labs(title = namei, subtitle = 'Test Set', tag = tagi) +
+    theme(plot.title = element_text(hjust = 2, face = 'bold.italic')) -> pt
+  diff_violin_box(dat_vali$genus.abun, sgc = dat_vali$sgc, name = namei, test = 'wilcox')$p +
+    theme(plot.title = element_text(hjust = -1, face = 'bold.italic')) +
+    labs(title = NULL, subtitle = 'Validation Set') -> pv
+  pt +
+    pv +
+    plot_layout(guides = 'collect') +
+    plot_annotation(subtitle = namei, theme = theme(plot.subtitle = element_text(hjust = .5, face = 'bold.italic')))
+}
+
+#  test + validation 
+pA <- pf2(asv_test, asv_vali, asv_genus[1], 'A')
+pB <- pf2(otu_test, otu_vali, otu_genus[1], 'B')
+pC <- pf2(asv_test, asv_vali, asv_genus[2], 'C')
+pD <- pf2(otu_test, otu_vali, otu_genus[2], 'D')
+pE <- pf2(asv_test, asv_vali, asv_genus[3], 'E')
+pF <- pf2(otu_test, otu_vali, otu_genus[3], 'F')
+
+# 
+library(patchwork)
+(pA | pB) /
+  (pC | pD) /
+  (pE | pF) +
+  plot_annotation(
+    title = "DADA2                                  OTU",
+    theme = theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 14))
+  ) +
+  plot_layout(guides = 'collect') -> psf6
+ggsave('plot/sf6.PDvsET.box.pdf', psf6, device = cairo_pdf(), width = 10, height = 10)
+```
+
+
+# Supplementary Figure 7. Genus between TD-PD and ET
+
+Supplementary Figure 7. Violin plots of RF-selected top three differential genera across DADA2-denoising and OTU-clustering methodologies in test and validation sets between TD-PD and ET groups.
+
+```{r}
+asv_genus <- c('Lachnoclostridium', 'Haemophilus', 'Bilophila')
+otu_genus <- c('Lachnoclostridium', 'Bilophila', 'Haemophilus')
+# data
+readRDS('data/asv/ETvsTD_PD.res.Rdata') -> asv_test
+readRDS('data/asv/ETvsTD_PD.yzset.res.Rdata') -> asv_vali
+readRDS('data/otu/ETvsTD_PD.res.Rdata') -> otu_test
+readRDS('data/otu/ETvsTD_PD.yzset.res.Rdata') -> otu_vali
+ 
+pf2 <- function(dat_test, dat_vali, namei, tagi = '') {
+  # namei = asv_genus[1]; tagi = 'A'
+  diff_violin_box(dat_test$genus.abun, sgc = dat_test$sgc, name = namei, test = 'wilcox')$p +
+    labs(title = namei, subtitle = 'Test Set', tag = tagi) +
+    theme(plot.title = element_text(hjust = 2, face = 'bold.italic')) -> pt
+  diff_violin_box(dat_vali$genus.abun, sgc = dat_vali$sgc, name = namei, test = 'wilcox')$p +
+    theme(plot.title = element_text(hjust = -1, face = 'bold.italic')) +
+    labs(title = NULL, subtitle = 'Validation Set') -> pv
+  pt +
+    pv +
+    plot_layout(guides = 'collect') +
+    plot_annotation(subtitle = namei, theme = theme(plot.subtitle = element_text(hjust = .5, face = 'bold.italic')))
+}
+
+#  test + validation 
+pA <- pf2(asv_test, asv_vali, asv_genus[1], 'A')
+pB <- pf2(otu_test, otu_vali, otu_genus[1], 'B')
+pC <- pf2(asv_test, asv_vali, asv_genus[2], 'C')
+pD <- pf2(otu_test, otu_vali, otu_genus[2], 'D')
+pE <- pf2(asv_test, asv_vali, asv_genus[3], 'E')
+pF <- pf2(otu_test, otu_vali, otu_genus[3], 'F')
+
+#  
+library(patchwork)
+(pA | pB) /
+  (pC | pD) /
+  (pE | pF) +
+  plot_annotation(
+    title = "DADA2                                  OTU",
+    theme = theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 14))
+  ) +
+  plot_layout(guides = 'collect') -> psf7
+ggsave('plot/sf7.ETvsTD-PD.box.pdf', psf7, device = cairo_pdf(), width = 10, height = 10)
+```
+
+
+# Supplementary Figure 8. Genus Dialister between TD-PD and non-TD-PD
+
+Supplementary Figure 8. Violin plots of the only differential genus Dialister across DADA2-denoising and OTU-clustering methodologies in test and validation sets between TD-PD and non-TD-PD groups. 
+
+```{r}
+asv_genus <- c('Dialister')
+otu_genus <- c('Dialister')
+# data
+readRDS('data/asv/TD_PDvsnonTD_PD.res.Rdata') -> asv_test
+readRDS('data/asv/TD_PDvsnonTD_PD.yzset.res.Rdata') -> asv_vali
+readRDS('data/otu/TD_PDvsnonTD_PD.res.Rdata') -> otu_test
+readRDS('data/otu/TD_PDvsnonTD_PD.yzset.res.Rdata') -> otu_vali
+ 
+pf2 <- function(dat_test, dat_vali, namei, tagi = '') {
+  # namei = asv_genus[1]; tagi = 'A'
+  diff_violin_box(dat_test$genus.abun, sgc = dat_test$sgc, name = namei, test = 'wilcox')$p +
+    labs(title = namei, subtitle = 'Test Set', tag = tagi) +
+    theme(plot.title = element_text(hjust = 2, face = 'bold.italic')) -> pt
+  diff_violin_box(dat_vali$genus.abun, sgc = dat_vali$sgc, name = namei, test = 'wilcox')$p +
+    theme(plot.title = element_text(hjust = -1, face = 'bold.italic')) +
+    labs(title = NULL, subtitle = 'Validation Set') -> pv
+  pt +
+    pv +
+    plot_layout(guides = 'collect') +
+    plot_annotation(subtitle = namei, theme = theme(plot.subtitle = element_text(hjust = .5, face = 'bold.italic')))
+}
+
+#  test + validation 
+pA <- pf2(asv_test, asv_vali, asv_genus[1], 'A')
+pB <- pf2(otu_test, otu_vali, otu_genus[1], 'B')
+
+#  
+library(patchwork)
+(pA | pB) +
+  plot_annotation(
+    title = "DADA2                                  OTU",
+    theme = theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 14))
+  ) +
+  plot_layout(guides = 'collect') -> psf8
+ggsave('plot/sf8.TD-PDvsnon-TP-PD.box.pdf', psf8, device = cairo_pdf(), width = 10, height = 3)
+```
+
+# Supplementary Figure 9. HC vs TD-PD
+
+Supplementary Figure 9. Differential taxa and ROC analysis between TD-PD and HC groups in the test set. 
+
+```{r}
+# Taxa showing significance group comparison in ≥2 approaches (including ANCOM, ANCOM-BC, ALDEx2, MaAsLin 2 and LEfSe) retained for random forest analysis
+asv_genus <- c(
+  'Citrobacter',
+  'Eggerthella',
+  'Haemophilus',
+  'Actinomyces',
+  'Kluyvera',
+  'Pseudomonas'
+)
+otu_genus <- c(
+  'Citrobacter',
+  'Eggerthella',
+  'Haemophilus',
+  'Catabacter',
+  'Stenotrophomonas'
+)
+
+readRDS('data/asv/HCvsTD_PD.res.Rdata') -> res_asv
+readRDS('data/otu/HCvsTD_PD.res.Rdata') -> res_otu
+readRDS('data/scfa_table.rds') %>%
+  tibble::column_to_rownames(colnames(.)[1]) -> res_scfa
+colnames(res_scfa)
+t(res_scfa[names(res_asv$sgc$sg), ]) -> df_scfa
+
+# A. venn 
+draw_venn_diagram(
+  a = setdiff(asv_genus, otu_genus),
+  b = setdiff(otu_genus, asv_genus),
+  ab = intersect(otu_genus, asv_genus),
+  a_name = 'DADA2',
+  b_name = 'OTU',
+  main = 'HC vs. TD-PD',
+  fsize = 3,
+  fsize_main = 4
+) -> pa
+
+# B. C randomForest Variable Importance
+rf_genus(res_asv, genusi = asv_genus) -> pb1
+rf_genus(res_otu, genusi = otu_genus) -> pb2
+
+# D. SCFA violin beeswarm
+purrr::map(
+  rownames(df_scfa),
+  ~ {
+    diff_violin_beeswarm(
+      df_scfa,
+      sgc = res_asv$sgc,
+      name = .x,
+      test = 'wilcox',
+      laby.box = 'Content(μg/g)',
+      bee.cex = 3
+    )$p +
+      labs(subtitle = NULL, x = NULL) +
+      theme(legend.position = 'none')
+  }
+) %>%
+  patchwork::wrap_plots(., patchwork::guide_area()) +
+  patchwork::plot_layout(nrow = 2, guides = 'collect') -> pd
+
+## rename data  add suff
+dplyr::left_join(
+  as.data.frame(t(res_asv$genus.abun[asv_genus, names(res_asv$sgc$sg)])) %>%
+    tibble::rownames_to_column('id') %>%
+    dplyr::rename_at(colnames(.)[-1], ~ paste0(.x, '-DADA2')),
+  as.data.frame(t(res_otu$genus.abun[otu_genus, names(res_otu$sgc$sg)])) %>%
+    tibble::rownames_to_column('id') %>%
+    dplyr::rename_at(colnames(.)[-1], ~ paste0(.x, '-OTU')),
+  by = 'id'
+) %>%
+  dplyr::left_join(tibble::rownames_to_column(res_scfa, 'id'), by = 'id') %>%
+  dplyr::mutate(group = fct_inorder(res_asv$sgc$sg[id]), .after = 1) %>%
+  tibble() -> df_roc
+
+# top3 names
+# Top 3 representative taxa identified from the results of random forest separately from the DADA2 and OTU methods by combining their rankings from both MDA and MDG scores, and then combined these representative taxa for ROC analysis
+name_acid = c('Isovaleric acid', 'Isobutyric acid')
+name_DADA2 = c('Haemophilus-DADA2', 'Eggerthella-DADA2', 'Citrobacter-DADA2')
+name_OTU = c('Eggerthella-OTU', 'Haemophilus-OTU', 'Catabacter-OTU')
+
+# E. ROC DADA2 OTU 
+froc_list(
+  df_roc,
+  Y = 'group',
+  print.thres = F,
+  namelist = list(
+    `DADA2` = name_DADA2,
+    `OTU` = name_OTU,
+    `DADA2+OTU` = c(name_OTU, name_DADA2)
+  )
+)$p -> proc
+
+# F. ROC DADA2 OTU + SCFA
+froc_list(
+  df_roc,
+  Y = 'group',
+  print.thres = F, #  best
+  namelist = list(
+    `DADA2+SCFA` = c(name_DADA2, name_acid),
+    `OTU+SCFA` = c(name_OTU, name_acid),
+    `DADA2+OTU+SCFA` = c(name_OTU, name_DADA2, name_acid)
+  )
+)$p -> proc_acid
+
+require(patchwork)
+(wrap_plots(
+  (pa + labs(tag = 'A')),
+  ((pb1$pmda + labs(tag = 'B')) + pb1$pgini),
+  ((pb2$pmda + labs(tag = 'C')) + pb2$pgini),
+  widths = c(1, 1, 1)
+) +
+  plot_layout(nrow = 1)) /
+  (wrap_plots(
+    ((pd + labs(tag = 'D'))),
+    (proc + theme(legend.position = 'none') + labs(tag = 'E')),
+    (proc_acid + theme(legend.position = 'none') + labs(tag = 'F')),
+    widths = c(3, 1, 1)
+  ) +
+    plot_layout(nrow = 1)) -> psf9
+ggsave('plot/sf9.HCvsTD-PD.pdf', psf9, device = cairo_pdf, width = 16, height = 8)
+# ggsave('p1.3.svg', p1all3, device = cairo_pdf, width = 15, height = 10)
+```
+
+# Supplementary Figure 10. ROC analysis between TD-PD and HC groups in the validation set. 
+```{r}
+# Top 3 representative taxa identified from the results of random forest separately from the DADA2 and OTU methods by combining their rankings from both MDA and MDG scores, and then combined these representative taxa for ROC analysis
+readRDS('data/asv/HCvsTD_PD.yzset.res.Rdata') -> asv_valid
+readRDS('data/otu/HCvsTD_PD.yzset.res.Rdata') -> otu_valid
+c('Haemophilus','Eggerthella','Citrobacter') -> asv_genus
+c('Eggerthella','Haemophilus','Catabacter') -> otu_genus
+name_acid = c('Isovaleric acid','Isobutyric acid')
+name_DADA2 = paste0(asv_genus, '-DADA2')
+name_OTU =  paste0(otu_genus, '-OTU')
+
+## rename data  add suff
+dplyr::left_join(
+  as.data.frame(t(asv_valid$genus.abun[asv_genus, names(asv_valid$sgc$sg)])) %>%
+    tibble::rownames_to_column('id') %>%
+    dplyr::rename_at(colnames(.)[-1], ~ paste0(.x, '-DADA2')),
+  as.data.frame(t(otu_valid$genus.abun[otu_genus, names(otu_valid$sgc$sg)])) %>%
+    tibble::rownames_to_column('id') %>%
+    dplyr::rename_at(colnames(.)[-1], ~ paste0(.x, '-OTU')),
+  by = 'id'
+) %>%
+  dplyr::left_join(tibble::rownames_to_column(res_scfa, 'id'), by = 'id') %>%
+  dplyr::mutate(group = fct_inorder(asv_valid$sgc$sg[id]), .after = 1) %>%
+  tibble() -> df_roc
+
+# A. ROC DADA2 OTU 
+froc_list(
+  df_roc,
+  Y = 'group',
+  print.thres = F,
+  namelist = list(
+    `DADA2` = name_DADA2,
+    `OTU` = name_OTU,
+    `DADA2+OTU` = c(name_OTU, name_DADA2)
+  )
+)$p -> proc
+
+# B. ROC DADA2 OTU + SCFA
+froc_list(
+  df_roc,
+  Y = 'group',
+  print.thres = F, #  best
+  namelist = list(
+    `DADA2+SCFA` = c(name_DADA2, name_acid),
+    `OTU+SCFA` = c(name_OTU, name_acid),
+    `DADA2+OTU+SCFA` = c(name_OTU, name_DADA2, name_acid)
+  )
+)$p -> proc_acid
+(proc + labs(tag='A') + theme(legend.position = 'none')) +
+ ( proc_acid + labs(tag='B') + theme(legend.position = 'none')) -> psf10
+ggsave('plot/sf10.HCvsTD-PD.pdf', psf10, device = cairo_pdf, width = 9, height = 4.6)
+```
+
+# Supplementary Figure 11. HC vs nonTD-PD
+
+Supplementary Figure 11.  Differential taxa and ROC analysis between non-TD-PD and HC groups in the test set.
+
+```{r}
+# Taxa showing significance group comparison in ≥2 approaches (including ANCOM, ANCOM-BC, ALDEx2, MaAsLin 2 and LEfSe) retained for random forest analysis
+asv_genus <- c(
+  'Alistipes',
+  'Eggerthella',
+  'Faecalibacterium',
+  'Gordonibacter',
+  'Stenotrophomonas',
+  'Catabacter',
+  'Corynebacterium',
+  'Haemophilus',
+  'Pseudomonas',
+  'Solobacterium'
+)
+otu_genus <- c(
+  'Alistipes',
+  'Eggerthella',
+  'Faecalibacterium',
+  'Gordonibacter',
+  'Stenotrophomonas',
+  'Citrobacter'
+)
+
+readRDS('data/asv/HCvsnonTD_PD.res.Rdata') -> res_asv
+readRDS('data/otu/HCvsnonTD_PD.res.Rdata') -> res_otu
+readRDS('data/scfa_table.rds') %>%
+  tibble::column_to_rownames(colnames(.)[1]) -> res_scfa
+colnames(res_scfa)
+t(res_scfa[names(res_asv$sgc$sg), ]) -> df_scfa
+
+# A. venn 
+draw_venn_diagram(
+  a = setdiff(asv_genus, otu_genus),
+  b = setdiff(otu_genus, asv_genus),
+  ab = intersect(otu_genus, asv_genus),
+  a_name = 'DADA2',
+  b_name = 'OTU',
+  main = 'HC vs. non-TD-PD',
+  fsize = 3,
+  fsize_main = 4
+) -> pa
+
+# B. C randomForest Variable Importance
+rf_genus(res_asv, genusi = asv_genus) -> pb1
+rf_genus(res_otu, genusi = otu_genus) -> pb2
+
+# D. SCFA violin beeswarm
+purrr::map(
+  rownames(df_scfa),
+  ~ {
+    diff_violin_beeswarm(
+      df_scfa,
+      sgc = res_asv$sgc,
+      name = .x,
+      test = 'wilcox',
+      laby.box = 'Content(μg/g)',
+      bee.cex = 3
+    )$p +
+      labs(subtitle = NULL, x = NULL) +
+      theme(legend.position = 'none')
+  }
+) %>%
+  patchwork::wrap_plots(., patchwork::guide_area()) +
+  patchwork::plot_layout(nrow = 2, guides = 'collect') -> pd
+
+## rename data  add suff
+dplyr::left_join(
+  as.data.frame(t(res_asv$genus.abun[asv_genus, names(res_asv$sgc$sg)])) %>%
+    tibble::rownames_to_column('id') %>%
+    dplyr::rename_at(colnames(.)[-1], ~ paste0(.x, '-DADA2')),
+  as.data.frame(t(res_otu$genus.abun[otu_genus, names(res_otu$sgc$sg)])) %>%
+    tibble::rownames_to_column('id') %>%
+    dplyr::rename_at(colnames(.)[-1], ~ paste0(.x, '-OTU')),
+  by = 'id'
+) %>%
+  dplyr::left_join(tibble::rownames_to_column(res_scfa, 'id'), by = 'id') %>%
+  dplyr::mutate(group = fct_inorder(res_asv$sgc$sg[id]), .after = 1) %>%
+  tibble() -> df_roc
+
+# top3 names
+# Top 3 representative taxa identified from the results of random forest separately from the DADA2 and OTU methods by combining their rankings from both MDA and MDG scores, and then combined these representative taxa for ROC analysis
+name_acid = c('Isovaleric acid', 'Isobutyric acid')
+name_DADA2 = c('Gordonibacter-DADA2', 'Stenotrophomonas-DADA2', 'Alistipes-DADA2')
+name_OTU = c('Stenotrophomonas-OTU', 'Citrobacter-OTU', 'Eggerthella-OTU')
+
+# E. ROC DADA2 OTU 
+froc_list(
+  df_roc,
+  Y = 'group',
+  print.thres = F,
+  namelist = list(
+    `DADA2` = name_DADA2,
+    `OTU` = name_OTU,
+    `DADA2+OTU` = c(name_OTU, name_DADA2)
+  )
+)$p -> proc
+
+# F. ROC DADA2 OTU + SCFA
+froc_list(
+  df_roc,
+  Y = 'group',
+  print.thres = F, #  best
+  namelist = list(
+    `DADA2+SCFA` = c(name_DADA2, name_acid),
+    `OTU+SCFA` = c(name_OTU, name_acid),
+    `DADA2+OTU+SCFA` = c(name_OTU, name_DADA2, name_acid)
+  )
+)$p -> proc_acid
+
+require(patchwork)
+(wrap_plots(
+  (pa + labs(tag = 'A')),
+  ((pb1$pmda + labs(tag = 'B')) + pb1$pgini),
+  ((pb2$pmda + labs(tag = 'C')) + pb2$pgini),
+  widths = c(1, 1, 1)
+) +
+  plot_layout(nrow = 1)) /
+  (wrap_plots(
+    ((pd + labs(tag = 'D'))),
+    (proc + theme(legend.position = 'none') + labs(tag = 'E')),
+    (proc_acid + theme(legend.position = 'none') + labs(tag = 'F')),
+    widths = c(3, 1, 1)
+  ) +
+    plot_layout(nrow = 1)) -> psf11
+ggsave('plot/sf11.HCvsnon-TD-PD.pdf', psf11, device = cairo_pdf, width = 16, height = 8)
+# ggsave('p1.3.svg', p1all3, device = cairo_pdf, width = 15, height = 10)
+```
+
+# Supplementary Figure 12. ROC analysis between non-TD-PD and HC groups in the validation set.
+
+```{r}
+# Top 3 representative taxa identified from the results of random forest separately from the DADA2 and OTU methods by combining their rankings from both MDA and MDG scores, and then combined these representative taxa for ROC analysis
+readRDS('data/asv/HCvsnonTD_PD.yzset.res.Rdata') -> asv_valid
+readRDS('data/otu/HCvsnonTD_PD.yzset.res.Rdata') -> otu_valid
+
+c('Gordonibacter','Stenotrophomonas','Alistipes') -> asv_genus
+c('Stenotrophomonas','Citrobacter','Eggerthella') -> otu_genus
+name_acid = c('Isovaleric acid','Isobutyric acid')
+name_DADA2 = paste0(asv_genus, '-DADA2')
+name_OTU =  paste0(otu_genus, '-OTU')
+
+## rename data  add suff
+dplyr::left_join(
+  as.data.frame(t(asv_valid$genus.abun[asv_genus, names(asv_valid$sgc$sg)])) %>%
+    tibble::rownames_to_column('id') %>%
+    dplyr::rename_at(colnames(.)[-1], ~ paste0(.x, '-DADA2')),
+  as.data.frame(t(otu_valid$genus.abun[otu_genus, names(otu_valid$sgc$sg)])) %>%
+    tibble::rownames_to_column('id') %>%
+    dplyr::rename_at(colnames(.)[-1], ~ paste0(.x, '-OTU')),
+  by = 'id'
+) %>%
+  dplyr::left_join(tibble::rownames_to_column(res_scfa, 'id'), by = 'id') %>%
+  dplyr::mutate(group = fct_inorder(asv_valid$sgc$sg[id]), .after = 1) %>%
+  tibble() -> df_roc
+
+# A. ROC DADA2 OTU 
+froc_list(
+  df_roc,
+  Y = 'group',
+  print.thres = F,
+  namelist = list(
+    `DADA2` = name_DADA2,
+    `OTU` = name_OTU,
+    `DADA2+OTU` = c(name_OTU, name_DADA2)
+  )
+)$p -> proc
+
+# B. ROC DADA2 OTU + SCFA
+froc_list(
+  df_roc,
+  Y = 'group',
+  print.thres = F, #  best
+  namelist = list(
+    `DADA2+SCFA` = c(name_DADA2, name_acid),
+    `OTU+SCFA` = c(name_OTU, name_acid),
+    `DADA2+OTU+SCFA` = c(name_OTU, name_DADA2, name_acid)
+  )
+)$p -> proc_acid
+(proc + labs(tag='A') + theme(legend.position = 'none')) +
+ ( proc_acid + labs(tag='B') + theme(legend.position = 'none')) -> psf12
+ggsave('plot/sf12.HCvsnon-TD-PD.pdf', psf12, device = cairo_pdf, width = 9, height = 4.6)
+```
+
+

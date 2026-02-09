@@ -7,7 +7,7 @@
 #' 
 diff_violin_beeswarm <- function(
    dat, sgc, name,
-   test  = c('param','nonparam','kruskal','anova','t.test','wilcox')[1], # auto 
+   test  = c('wilcox', 'param','nonparam','kruskal','anova','t.test')[1], # auto 
    pair.test= c('pairwise','t.test','wilcox')[1],
    pair.adjust = c('bonferroni')[1],
    var.equal = F, paired = F, exact = NULL, # 
@@ -19,7 +19,7 @@ diff_violin_beeswarm <- function(
    p_limit=0.05, coef = 1.5, errorbar.width = .5,
    violin_trim = T, 
    bee.cex = 1, bee.alpha=1,
-   priority = c("ascending","descending", "density", "random", "none")[3],
+   priority = c("ascending","descending", "density", "random", "none")[4],
    tip_length = 0.01, tip_vjust=0.1, sig_vjust=0.01, # tip
    angle.x=0, base.size=11, size.signif=8, size.border=.5, # 
    kh=.5, kw=.5, opre=NULL, pw=6, ph=6, # 
@@ -272,8 +272,9 @@ diff_violin_beeswarm <- function(
       p0 + #geom_violin(aes(color=gp),fill='white',width = 0.75)+
         geom_violin(color='black',fill='white', position = position_dodge(1),
                     size=1,alpha=.5, scale = 'width', trim = F) +
-        ggbeeswarm::geom_beeswarm(aes(color=gp), priority = priority,
-                                  alpha=bee.alpha, cex = bee.cex) -> pv4; pv4
+        ggbeeswarm::geom_quasirandom(aes(color=gp), width=.45, size=1, alpha=bee.alpha) -> pv4
+       # ggbeeswarm::geom_beeswarm(aes(color=gp), priority = priority, dodge.width=1,size=1,
+       #                           alpha=bee.alpha, cex = bee.cex) -> pv4; pv4
       # p.signif
       ol$p <- .p_add.sig(pv4,yn = 'yna',ys.min = ys.mina, labelcol = sig.type)
       ol$dat <- list(mean_SE = res.medl,

@@ -7,7 +7,7 @@ v_anosim <- function(
   laby='Rank Dissimilarity', title='ANOSIM',
   las = 1, Between_col = 'gray',
   ptype=c('box','violin','violin2')[1],
-  base_size = 17,
+  base_size = 11,
   opre = NULL, pw = 6, ph = 7
 ){
   gpn   <- unique(sgc$sg) # groupname
