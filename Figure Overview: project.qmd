@@ -54,13 +54,16 @@ diff_alpha_box(rotu$alpha, rotu$sgc, cname = cname, parameter = F) -> po
 
 # anosim
 set.seed(123)
-# E.  unifarc anosim
+# E. unweighted unifarc anosim
 v_anosim(rasv$unifrac, sgc = rasv$sgc)$p -> pasv_unifrac
-# F. weight unifarc anosim
+
+# F. weighted unifarc anosim
 v_anosim(rasv$wunifrac, sgc = rasv$sgc)$p -> pasv_wunifrac
-# K.  unifarc anosim
+
+# K. unweighted unifarc anosim
 v_anosim(rotu$unifrac, sgc = rotu$sgc)$p -> potu_unifrac
-# L. weight unifarc anosim
+
+# L. weighted unifarc anosim
 v_anosim(rotu$wunifrac, sgc = rotu$sgc)$p -> potu_wunifrac
 
 pa$p$Chao1 +
