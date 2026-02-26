@@ -1,5 +1,6 @@
 #' anosim 
-#' ?vegan::anosim
+#' @param dist Data matrix weighted unifarc or unweighted unifarc
+#' @param sgc sample group color list 
 #' 
 v_anosim <- function(
   dist, sgc, permutations=999, violin = F,
