@@ -25,19 +25,6 @@ diff_violin_beeswarm <- function(
    kh=.5, kw=.5, opre=NULL, pw=6, ph=6, # 
    warn = F
 ){
-   if(F){ # test #####
-     priority = c("ascending","descending", "density", "random", "none")[3]
-     bee.cex = 1; bee.alpha=1
-      dat=eg.genus;sgc=eg.sgc2;name='Fusobacterium';ptype = c('violin')[1]
-      # sgc$sg[1:3] <- c('B_1'='B1-B1','B_2'='B1-B1','B_3'='B1-B1');sgc$gc[1] <- c('B1-B1'='red'); dfi$val[1] <- 1
-      test=c('anova','kruskal')[1];pair.test='pairwise';  bee.cex = 1; violin_trim=T
-      laby='Relative Abundance (mean±SE)';laby.box='Abundance';title='plot'
-      var.equal=F;paired =F;exact=F;angle.x=0; base.size=8; size.signif=8; size.border=.5;
-      cutpoints = c(0, 0.001, 0.01, 0.05, 1); symbols = c("***", "**", "*", "")
-      p_limit=0.05;coef = 1.5;tip_length = 0.01;sig_vjust=0.01;tip_vjust=0.1
-      sig.type = c('p.signif','p.format','p.format.signif')[1];
-      kh=.5; kw=.5;pre=NULL; pw=6; ph=6; warn=T; errorbar.width = .5
-   }
    ol <- list(name=name) # 
    if(is.null(title)) title <- name
    ptypes <-  c('bar','box','violin')
@@ -292,5 +279,6 @@ diff_violin_beeswarm <- function(
       message(opre,'pdf xlsx \n')
    }
 }
+
 
 
