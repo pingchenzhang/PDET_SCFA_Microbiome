@@ -315,11 +315,11 @@ ANCOM <- function(feature_table, meta_data, struc_zero = NULL, main_var, p_adj_m
       theme(plot.title = element_text(hjust = 0.5), legend.position = "top")
     fig
   }
-  # 火山图 包含两两组间
+  # volcano plot，including pairwise comparison
   plotvoc <- function(){
     clr_table   <- apply(feature_table, 2, compositions::clr)
     group_names <- unique(meta_data[[main_var]])
-    ##每组的均值
+    ##means of group
     purrr::map(setNames(group_names,group_names), ~{
       rowMeans(clr_table[,meta_data[[1]][meta_data[[main_var]]==.x], drop=F])
     }) -> lmeans
