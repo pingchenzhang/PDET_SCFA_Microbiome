@@ -31,7 +31,7 @@ diff_violin_box <- function(
    if(! (ptype %in% ptypes)) stop('ptype must in:',paste0(ptypes,collapse = ', '))
    ##  sp gp val #### dfi$val[1] <- 1
    if(length(name)>1 & name %in% rownames(dat)) stop('name must in dat rownames。')
-   gpname <- unique(sgc$sg) # 分组名字
+   gpname <- unique(sgc$sg) # group name
    gpnewname <- setNames(gpname,stringr::str_replace_all(gpname,'-','_'))
    dfi <- tibble(sp=names(sgc$sg),gp=sgc$sg,val=unlist(dat[name,names(sgc$sg)])) %>%
       dplyr::mutate(gp2=factor(stringr::str_replace_all(gp,'-','_'),levels = names(gpnewname))) %>%
@@ -287,6 +287,7 @@ diff_violin_box <- function(
       message(opre,'pdf xlsx \n')
    }
 }
+
 
 
 
