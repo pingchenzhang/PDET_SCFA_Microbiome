@@ -8,7 +8,7 @@ draw_venn_diagram <- function(
   main = 'Venn',
   fsize = 8, fsize_main=10
 ) {
-  # 定义圆心位置和半径
+  # Define the circle's center position and radius
   a_center <- c(x = 3, y = 5)
   b_center <- c(x = 7, y = 5)
   radius <- 5
@@ -31,14 +31,14 @@ draw_venn_diagram <- function(
       aes(x = x, y = y),
       size = 1
     ) +
-    # 文本标签
+    # text label
     annotate("text", x = 0, y = 5, label = paste(a, collapse = '\n'), size = fsize) +
     annotate("text", x = 5, y = 5, label = paste(ab, collapse = '\n'), size = fsize) +
     annotate("text", x = 10, y = 5, label = paste(b, collapse = '\n'), size = fsize) +
     annotate("text", x = 2, y = -.5, label = a_name, size = fsize + 1) +
     annotate("text", x = 8, y = -.5, label = b_name, size = fsize + 1) +
     annotate("text", x = 5, y = 11, label = main, size = fsize_main) +
-    # 图形设置
+    # Graphic settings
     #xlim(0, 10) +
     #ylim(0, 10) +
     theme_void() +
